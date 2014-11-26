@@ -30,7 +30,6 @@
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
-#include <linux/memory_alloc.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/sched.h>
@@ -66,7 +65,7 @@ void xlog(const char *name, u32 data0, u32 data1, u32 data2, u32 data3, u32 data
 static int mdss_fb_mem_get_iommu_domain(void)
 {
 	return mdss_get_iommu_domain(MDSS_IOMMU_DOMAIN_UNSECURE);
-};
+}
 
 struct msm_mdp_interface mdp5 = {
 	.init_fnc = mdss_mdp_overlay_init,
@@ -419,9 +418,6 @@ int mdss_mdp_bus_scale_set_quota(u64 ab_quota, u64 ib_quota)
 			vect = &bw_table->usecase[new_uc_idx].vectors[i];
 			vect->ab = ab_quota;
 			vect->ib = ib_quota;
-
-		bus_ab_quota_dbg = ab_quota;
-		bus_ib_quota_dbg = ib_quota;
 
 			pr_debug("uc_idx=%d path_idx=%d ab=%llu ib=%llu\n",
 				new_uc_idx, i, vect->ab, vect->ib);
@@ -812,6 +808,7 @@ void mdss_mdp_clk_ctrl(int enable, int isr)
 			mdss_mdp_clk_update(MDSS_CLK_MDP_VSYNC, enable);
 
 		mdss_bus_bandwidth_ctrl(enable);
+
 		if (!enable)
 			pm_runtime_put(&mdata->pdev->dev);
 	}
@@ -938,7 +935,6 @@ int mdss_iommu_attach(struct mdss_data_type *mdata)
 				iomap->client_name, iomap->ctx_name);
 			continue;
 		}
-
 		rc = iommu_attach_device(domain, iomap->ctx);
 		if (rc) {
 			WARN(1, "mdp::iommu device attach failed rc:%d\n", rc);
@@ -1236,7 +1232,6 @@ static ssize_t mdss_mdp_show_capabilities(struct device *dev,
 	SPRINT("dma_pipes=%d\n", mdata->ndma_pipes);
 	SPRINT("smp_count=%d\n", mdata->smp_mb_cnt);
 	SPRINT("smp_size=%d\n", mdata->smp_mb_size);
-	SPRINT("smp_mb_per_pipe=%d\n", mdata->smp_mb_per_pipe);
 	SPRINT("max_downscale_ratio=%d\n", MAX_DOWNSCALE_RATIO);
 	SPRINT("max_upscale_ratio=%d\n", MAX_UPSCALE_RATIO);
 	if (mdata->max_bw_low)
@@ -1741,6 +1736,7 @@ static int mdss_mdp_parse_dt(struct platform_device *pdev)
 	return 0;
 }
 
+
 static int  mdss_mdp_parse_dt_pipe_clk_ctrl(struct platform_device *pdev,
 	char *prop_name, struct mdss_mdp_pipe *pipe_list, u32 npipes)
 {
@@ -1821,6 +1817,8 @@ static int mdss_mdp_parse_dt_pipe(struct platform_device *pdev)
 			"qcom,mdss-pipe-rgb-fetch-id");
 	nfids  += mdss_mdp_parse_dt_prop_len(pdev,
 			"qcom,mdss-pipe-dma-fetch-id");
+
+	npipes = mdata->nvig_pipes + mdata->nrgb_pipes + mdata->ndma_pipes;
 
 	if (npipes != nfids) {
 		pr_err("device tree err: unequal number of pipes and smp ids");
@@ -2762,11 +2760,12 @@ static int mdss_mdp_resume(struct platform_device *pdev)
 static int mdss_mdp_runtime_resume(struct device *dev)
 {
 	struct mdss_data_type *mdata = dev_get_drvdata(dev);
+	bool device_on = true;
 	if (!mdata)
 		return -ENODEV;
 
 	dev_dbg(dev, "pm_runtime: resuming...\n");
-
+	device_for_each_child(dev, &device_on, mdss_fb_suspres_panel);
 	mdss_mdp_footswitch_ctrl(mdata, true);
 
 	return 0;
@@ -2786,6 +2785,7 @@ static int mdss_mdp_runtime_idle(struct device *dev)
 static int mdss_mdp_runtime_suspend(struct device *dev)
 {
 	struct mdss_data_type *mdata = dev_get_drvdata(dev);
+	bool device_on = false;
 	if (!mdata)
 		return -ENODEV;
 	dev_dbg(dev, "pm_runtime: suspending...\n");
@@ -2794,6 +2794,7 @@ static int mdss_mdp_runtime_suspend(struct device *dev)
 		pr_err("MDP suspend failed\n");
 		return -EBUSY;
 	}
+	device_for_each_child(dev, &device_on, mdss_fb_suspres_panel);
 	mdss_mdp_footswitch_ctrl(mdata, false);
 
 	return 0;

@@ -399,7 +399,9 @@ static struct mdss_mdp_wb_data *get_local_node(struct mdss_mdp_wb *wb,
 static struct mdss_mdp_wb_data *get_user_node(struct msm_fb_data_type *mfd,
 						struct msmfb_data *data)
 {
-
+#if defined(CONFIG_FB_MSM_CMD_MODE)
+	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd); 
+#endif
 	struct mdss_mdp_wb *wb = mfd_to_wb(mfd);
 	struct mdss_mdp_wb_data *node;
 	struct mdss_mdp_img_data *buf;

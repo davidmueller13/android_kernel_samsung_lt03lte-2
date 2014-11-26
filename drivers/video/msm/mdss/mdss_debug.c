@@ -425,6 +425,7 @@ void mdss_dump_reg(char __iomem *base, int len)
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 }
 
+
 int vsync_count;
 static struct mdss_mdp_misr_map {
 	u32 ctrl_reg;

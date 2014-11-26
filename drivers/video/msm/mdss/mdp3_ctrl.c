@@ -627,17 +627,8 @@ static int mdp3_ctrl_on(struct msm_fb_data_type *mfd)
 	}
 
 	mdp3_session->clk_on = 1;
-	pr_debug("mdp3_ctrl_on dma start\n");
-	if (mfd->fbi->screen_base) {
-		rc = mdp3_session->dma->start(mdp3_session->dma,
-						mdp3_session->intf);
-		if (rc) {
-			pr_err("fail to start the MDP display interface\n");
-			goto on_error;
-		}
-	} else {
-		mdp3_session->first_commit = true;
-	}
+
+	mdp3_session->first_commit = true;
 
 on_error:
 	if (!rc)
@@ -771,10 +762,7 @@ static int mdp3_ctrl_reset_cmd(struct msm_fb_data_type *mfd)
 	if (vsync_client.handler)
 		mdp3_dma->vsync_enable(mdp3_dma, &vsync_client);
 
-	if (mfd->fbi->screen_base)
-		rc = mdp3_dma->start(mdp3_dma, mdp3_session->intf);
-	else
-		mdp3_session->first_commit = true;
+	mdp3_session->first_commit = true;
 
 reset_error:
 	mutex_unlock(&mdp3_session->lock);
@@ -810,15 +798,15 @@ static int mdp3_ctrl_reset(struct msm_fb_data_type *mfd)
 	if (panel && panel->set_backlight)
 		panel->set_backlight(panel, 0);
 
-	rc = panel->event_handler(panel, MDSS_EVENT_PANEL_OFF, NULL);
-	if (rc)
-		pr_err("fail to turn off panel\n");
-
 	rc = mdp3_dma->stop(mdp3_dma, mdp3_session->intf);
 	if (rc) {
 		pr_err("fail to stop the MDP3 dma\n");
 		goto reset_error;
 	}
+
+	rc = panel->event_handler(panel, MDSS_EVENT_PANEL_OFF, NULL);
+	if (rc)
+		pr_err("fail to turn off panel\n");
 
 	rc = mdp3_put_mdp_dsi_clk();
 	if (rc) {
@@ -862,10 +850,7 @@ static int mdp3_ctrl_reset(struct msm_fb_data_type *mfd)
 	if (vsync_client.handler)
 		mdp3_dma->vsync_enable(mdp3_dma, &vsync_client);
 
-	if (mfd->fbi->screen_base)
-		rc = mdp3_dma->start(mdp3_dma, mdp3_session->intf);
-	else
-		mdp3_session->first_commit = true;
+	mdp3_session->first_commit = true;
 
 reset_error:
 	mutex_unlock(&mdp3_session->lock);
@@ -1039,7 +1024,6 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd,
 		mdp3_ctrl_reset(mfd);
 		reset_done = true;
 	}
-	mdp3_release_splash_memory();
 
 	mutex_lock(&mdp3_session->lock);
 
@@ -1075,6 +1059,7 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd,
 	}
 
 	if (mdp3_bufq_count(&mdp3_session->bufq_out) > 1) {
+		mdp3_release_splash_memory(mfd);
 		data = mdp3_bufq_pop(&mdp3_session->bufq_out);
 		mdp3_put_img(data, MDP3_CLIENT_DMA_P);
 	}
@@ -1125,11 +1110,7 @@ static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd)
 	if (!mdp3_iommu_is_attached(MDP3_CLIENT_DMA_P)) {
 		pr_debug("continuous splash screen, IOMMU not attached\n");
 		mdp3_ctrl_reset(mfd);
-#if defined(CONFIG_WHITE_PANEL)
-		reset_done = true;
-#endif
 	}
-	mdp3_release_splash_memory();
 
 	mutex_lock(&mdp3_session->lock);
 

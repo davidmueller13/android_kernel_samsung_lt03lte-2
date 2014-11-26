@@ -38,6 +38,8 @@ static DEFINE_MUTEX(mdss_mdp_sspp_lock);
 static DEFINE_MUTEX(mdss_mdp_smp_lock);
 
 static void mdss_mdp_pipe_free(struct kref *kref);
+static int mdss_mdp_smp_mmb_set(int client_id, unsigned long *smp);
+static void mdss_mdp_smp_mmb_free(unsigned long *smp, bool write);
 static struct mdss_mdp_pipe *mdss_mdp_pipe_search_by_client_id(
 	struct mdss_data_type *mdata, int client_id);
 static void mdss_mdp_smp_mmb_free(unsigned long *smp, bool write);
@@ -54,7 +56,7 @@ static inline u32 mdss_mdp_pipe_read(struct mdss_mdp_pipe *pipe, u32 reg)
 }
 
 static u32 mdss_mdp_smp_mmb_reserve(struct mdss_mdp_pipe_smp_map *smp_map,
-	size_t n)
+	size_t n, bool force_alloc)
 {
 	u32 i, mmb;
 	u32 fixed_cnt = bitmap_weight(smp_map->fixed, SMP_MB_CNT);
@@ -72,7 +74,7 @@ static u32 mdss_mdp_smp_mmb_reserve(struct mdss_mdp_pipe_smp_map *smp_map,
 	 * that calls for change in smp configuration (addition/removal
 	 * of smp blocks), so that fallback solution happens.
 	 */
-	if (i != 0 && n != i) {
+	if (i != 0 && n != i && !force_alloc) {
 		pr_debug("Can't change mmb config, num_blks: %d alloc: %d\n",
 			n, i);
 		return 0;
@@ -84,7 +86,7 @@ static u32 mdss_mdp_smp_mmb_reserve(struct mdss_mdp_pipe_smp_map *smp_map,
 	 */
 	mdss_mdp_smp_mmb_free(smp_map->reserved, false);
 
-	/* Reserve mmb blocks*/
+	/* reserve more blocks if needed, but can't free mmb at this point */
 	for (; i < n; i++) {
 		if (bitmap_full(mdata->mmb_alloc_map, SMP_MB_CNT))
 			break;
@@ -215,6 +217,7 @@ int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe)
 	struct mdss_mdp_plane_sizes ps;
 	int i;
 	int rc = 0, rot_mode = 0, wb_mixer = 0;
+	bool force_alloc = 0;
 	u32 nlines, format, seg_w;
 	u16 width;
 
@@ -301,6 +304,8 @@ int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe)
 	if (pipe->mixer->type == MDSS_MDP_MIXER_TYPE_WRITEBACK)
 		wb_mixer = 1;
 
+	force_alloc = pipe->flags & MDP_SMP_FORCE_ALLOC;
+
 	mutex_lock(&mdss_mdp_smp_lock);
 	for (i = (MAX_PLANES - 1); i >= ps.num_planes; i--) {
 		if (bitmap_weight(pipe->smp_map[i].allocated, SMP_MB_CNT)) {
@@ -330,13 +335,13 @@ int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe)
 		pr_debug("reserving %d mmb for pnum=%d plane=%d\n",
 				num_blks, pipe->num, i);
 		reserved = mdss_mdp_smp_mmb_reserve(&pipe->smp_map[i],
-			num_blks);
+			num_blks, force_alloc);
 		if (reserved < num_blks)
 			break;
 	}
 
 	if (reserved < num_blks) {
-		pr_debug("insufficient MMB blocks\n");
+		pr_err("insufficient MMB blocks\n");
 		for (; i >= 0; i--)
 			mdss_mdp_smp_mmb_free(pipe->smp_map[i].reserved,
 				false);
@@ -440,8 +445,10 @@ int mdss_mdp_smp_handoff(struct mdss_data_type *mdata)
 			 * such cases, we do not need to do anything
 			 * here.
 			 */
-			pr_debug("smp mmb %d already assigned to pipe %d (client_id %d)"
-				, i, pipe->num, client_id);
+			pipe = mdss_mdp_pipe_search_by_client_id(mdata,
+								client_id);
+			pr_debug("smp mmb %d already assigned to pipe %d (client_id %d) %d"
+					, i, pipe->num, client_id, __LINE__);
 			continue;
 		}
 
@@ -691,8 +698,8 @@ static void mdss_mdp_pipe_free(struct kref *kref)
 
 	pipe->flags = 0;
 	pipe->bwc_mode = 0;
+	pipe->mfd = NULL;
 	memset(&pipe->scale, 0, sizeof(struct mdp_scale_data));
-
 }
 
 static int mdss_mdp_is_pipe_idle(struct mdss_mdp_pipe *pipe,
@@ -763,9 +770,9 @@ int mdss_mdp_pipe_fetch_halt(struct mdss_mdp_pipe *pipe)
 
 	is_idle = mdss_mdp_is_pipe_idle(pipe, true);
 	if (!is_idle) {
-			pr_err("%pS: pipe%d is not idle. xin_id=%d\n",
+		pr_err("%pS: pipe%d is not idle. xin_id=%d\n",
 			__builtin_return_address(0), pipe->num, pipe->xin_id);
-
+ 
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
 		mutex_lock(&mdata->reg_lock);
 		idle_mask = BIT(pipe->xin_id + 16);
@@ -790,6 +797,7 @@ int mdss_mdp_pipe_fetch_halt(struct mdss_mdp_pipe *pipe)
 			MMSS_VBIF_XIN_HALT_CTRL0);
 		writel_relaxed(reg_val & ~BIT(pipe->xin_id),
 			mdata->vbif_base + MMSS_VBIF_XIN_HALT_CTRL0);
+
 		mutex_unlock(&mdata->reg_lock);
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 	}
@@ -805,6 +813,7 @@ int mdss_mdp_pipe_destroy(struct mdss_mdp_pipe *pipe)
 				pipe->num);
 		return -EBUSY;
 	}
+
 	mutex_unlock(&mdss_mdp_sspp_lock);
 
 	return 0;
@@ -871,8 +880,6 @@ int mdss_mdp_pipe_handoff(struct mdss_mdp_pipe *pipe)
 error:
 	return rc;
 }
-
-
 
 static int mdss_mdp_image_setup(struct mdss_mdp_pipe *pipe,
 					struct mdss_mdp_data *data)
@@ -1042,7 +1049,6 @@ static int mdss_mdp_format_setup(struct mdss_mdp_pipe *pipe)
 			MDSS_MDP_FETCH_CONFIG_RESET_VALUE |
 				 mdata->highest_bank_bit << 18);
 	}
-
 	mdss_mdp_pipe_write(pipe, MDSS_MDP_REG_SSPP_SRC_FORMAT, src_format);
 	mdss_mdp_pipe_write(pipe, MDSS_MDP_REG_SSPP_SRC_UNPACK_PATTERN, unpack);
 	mdss_mdp_pipe_write(pipe, MDSS_MDP_REG_SSPP_SRC_OP_MODE, opmode);

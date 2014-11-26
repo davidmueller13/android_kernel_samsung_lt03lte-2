@@ -687,3 +687,4 @@ int mdss_dsi_cmdlist_put(struct mdss_dsi_ctrl_pdata *ctrl,
 	}
 	return ret;
 }
+

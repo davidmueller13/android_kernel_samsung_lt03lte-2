@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -21,6 +21,42 @@
 /include/ "msm8974-v2-iommu-domains.dtsi"
 /include/ "msm8974pro-pm.dtsi"
 /include/ "msm8974pro-ion.dtsi"
+
+/ {
+        memory {
+
+
+		alt_peripheral_mem: peripheral_region@5a00000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+			reg = <0x5a00000 0x2100000>;
+			label = "peripheral_mem";
+		};
+
+		tz_apps@0x7b00000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+			reg = <0x7b00000 0x500000>;
+			label = "tz_apps";
+
+		};
+
+		modem_mem: modem_region@0x8000000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+			reg = <0x8000000 0x5200000>;
+			label = "modem_mem";
+
+		};
+        };
+};
+
+&peripheral_mem {
+	status = "disabled";
+};
 
 &soc {
 	android_usb@fe8050c8 {
@@ -1616,42 +1652,42 @@
                        reg = <0>;
                        qcom,gpu-freq = <578000000>;
                        qcom,bus-freq = <14>;
-                       qcom,io-fraction = <33>;
+                       qcom,io-fraction = <101>;
                };
 
                qcom,gpu-pwrlevel@1 {
                        reg = <1>;
                        qcom,gpu-freq = <462400000>;
                        qcom,bus-freq = <11>;
-                       qcom,io-fraction = <66>;
+                       qcom,io-fraction = <101>;
                };
 
                qcom,gpu-pwrlevel@2 {
                        reg = <2>;
                        qcom,gpu-freq = <389000000>;
                        qcom,bus-freq = <8>;
-                       qcom,io-fraction = <66>;
+                       qcom,io-fraction = <101>;
                };
 
                qcom,gpu-pwrlevel@3 {
                        reg = <3>;
-                       qcom,gpu-freq = <320000000>;
+                       qcom,gpu-freq = <330000000>;
                        qcom,bus-freq = <5>;
-                       qcom,io-fraction = <100>;
+                       qcom,io-fraction = <101>;
                };
 
                qcom,gpu-pwrlevel@4 {
                        reg = <4>;
                        qcom,gpu-freq = <200000000>;
                        qcom,bus-freq = <2>;
-                       qcom,io-fraction = <100>;
+                       qcom,io-fraction = <101>;
                };
 
                qcom,gpu-pwrlevel@5 {
                        reg = <5>;
                        qcom,gpu-freq = <27000000>;
                        qcom,bus-freq = <0>;
-                       qcom,io-fraction = <0>;
+                       qcom,io-fraction = <101>;
                };
        };
 };
@@ -1667,6 +1703,20 @@
 	qcom,mdss-has-bwc;
 	qcom,mdss-has-decimation;
 	qcom,mdss-ad-off = <0x0013100 0x00013300>;
+	qcom,max-bandwidth-low-kbps = <2750000>;
+	qcom,mdp-settings = <0x000002E0 0x000000E9>,
+			    <0x000002E4 0x00000055>,
+			    <0x000003AC 0xC0000CCC>,
+			    <0x000003B4 0xC0000CCC>,
+			    <0x000003BC 0x00CCCCCC>,
+			    <0x000004A8 0x0CCCC0C0>,
+			    <0x000004B0 0xCCCCC0C0>,
+			    <0x000004B8 0xCCCCC000>,
+			    <0x00011148 0x00000058>,
+			    <0x00011548 0x00000058>,
+			    <0x00011948 0x00000058>,
+			    <0x00011D48 0x00000058>,
+			    <0x00012148 0x00000058>;
 };
 
 &mdss_hdmi_tx {
@@ -1701,7 +1751,7 @@
 	qcom,dec-ocmem-ab-ib = <0 0>,
 		<176000 519000>,
 		<456000 519000>,
-		<864000 519000>,
+		<864000 629000>,
 		<1728000 1038000>,
 		<2766000 1661000>,
 		<3456000 2076000>,
@@ -1747,7 +1797,6 @@
 	};
 };
 
-&memory_hole {
-	qcom,memblock-remove = <0x05a00000 0x7800000
-				0x0fa00000 0x500000>; /* Address and size of the hole */
+&gdsc_venus {
+	qcom,skip-logic-collapse;
 };

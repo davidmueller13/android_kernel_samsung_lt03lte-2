@@ -317,7 +317,6 @@ static int mdss_mdp_video_stop(struct mdss_mdp_ctl *ctl)
 		pr_err("invalid ctx for ctl=%d\n", ctl->num);
 		return -ENODEV;
 	}
-
 	MDSS_XLOG(ctl->num, ctl->vsync_cnt);
 	if (ctx->timegen_en) {
 		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_BLANK, NULL);
@@ -337,8 +336,6 @@ static int mdss_mdp_video_stop(struct mdss_mdp_ctl *ctl)
 				frame_rate = 24;
 			msleep((1000/frame_rate) + 1);
 		}
-
-		mdss_iommu_ctrl(0);
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 		ctx->timegen_en = false;
 
@@ -654,9 +651,6 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 	return rc;
 }
 
-
-
-
 static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 {
 	struct mdss_mdp_video_ctx *ctx;
@@ -785,6 +779,7 @@ int mdss_mdp_video_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 	int i, ret = 0;
 	struct mdss_mdp_video_ctx *ctx;
 	struct mdss_data_type *mdata = ctl->mdata;
+	struct mdss_mdp_ctl *sctl;
 
 #if !defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OCTA_VIDEO_FULL_HD_PT_PANEL) && !defined(CONFIG_FB_MSM_MDSS_S6E8AA0A_HD_PANEL)
 	ret = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_FIRST_FRAME_UPDATE, NULL);
@@ -826,6 +821,10 @@ int mdss_mdp_video_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 #endif
 error:
 	pdata->panel_info.cont_splash_enabled = 0;
+	sctl = mdss_mdp_get_split_ctl(ctl);
+	if (sctl) {
+		sctl->panel_data->panel_info.cont_splash_enabled = 0;
+	}
 
 	return ret;
 }

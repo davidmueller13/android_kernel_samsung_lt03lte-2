@@ -220,6 +220,7 @@ enum {
 #define MDP_MEMORY_ID_TYPE_FB		0x00001000
 #define MDP_BWC_EN			0x00000400
 #define MDP_DECIMATION_EN		0x00000800
+#define MDP_SMP_FORCE_ALLOC            0x00200000
 #define MDP_TRANSP_NOP 0xffffffff
 #define MDP_ALPHA_NOP 0xff
 
@@ -998,6 +999,7 @@ enum {
 	metadata_op_wb_secure,
 	metadata_op_get_caps,
 	metadata_op_crc,
+	metadata_op_get_ion_fd,
 	metadata_op_max
 };
 
@@ -1031,6 +1033,7 @@ struct msmfb_metadata {
 		uint32_t video_info_code;
 		struct mdss_hw_caps caps;
 		uint8_t secure_en;
+		int fbmem_ionfd;
 	} data;
 };
 

@@ -999,6 +999,15 @@ static int mdss_dsi_ctl_partial_update(struct mdss_panel_data *pdata)
 	return rc;
 }
 
+int mdss_dsi_register_recovery_handler(struct mdss_dsi_ctrl_pdata *ctrl,
+	struct mdss_panel_recovery *recovery)
+{
+	mutex_lock(&ctrl->mutex);
+	ctrl->recovery = recovery;
+	mutex_unlock(&ctrl->mutex);
+	return 0;
+}
+
 static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 				  int event, void *arg)
 {
@@ -1012,10 +1021,6 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 	pr_debug("%s+:event=%d\n", __func__, event);
-
-#if defined (CONFIG_FB_MSM_MDSS_DSI_DBG)
-	xlog(__func__, event, (int)arg, ctrl_pdata->ndx, 0, 0, 0x3333);
-#endif
 
 	MDSS_XLOG(event, arg, ctrl_pdata->ndx, 0x3333);
 
@@ -1092,7 +1097,6 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 #endif
 		break;
 	case MDSS_EVENT_DSI_CMDLIST_KOFF:
-		ctrl_pdata->recovery = (struct mdss_panel_recovery *)arg;
 		mdss_dsi_cmdlist_commit(ctrl_pdata, 1);
 		break;
 	case MDSS_EVENT_PANEL_UPDATE_FPS:
@@ -1132,6 +1136,10 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 #endif
 	case MDSS_EVENT_ENABLE_PARTIAL_UPDATE:
 		rc = mdss_dsi_ctl_partial_update(pdata);
+		break;
+	case MDSS_EVENT_REGISTER_RECOVERY_HANDLER:
+		rc = mdss_dsi_register_recovery_handler(ctrl_pdata,
+			(struct mdss_panel_recovery *)arg);
 		break;
 	default:
 		if(ctrl_pdata->event_handler)

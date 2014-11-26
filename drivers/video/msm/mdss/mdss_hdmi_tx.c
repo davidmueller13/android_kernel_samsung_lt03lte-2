@@ -121,8 +121,8 @@ static int hdmi_tx_enable_power(struct hdmi_tx_ctrl *hdmi_ctrl,
 static inline void hdmi_tx_set_audio_switch_node(struct hdmi_tx_ctrl *hdmi_ctrl,
 	int val, bool force);
 static int hdmi_tx_audio_setup(struct hdmi_tx_ctrl *hdmi_ctrl);
-static void hdmi_tx_audio_off(struct hdmi_tx_ctrl *hdmi_ctrl);
 static void hdmi_tx_en_encryption(struct hdmi_tx_ctrl *hdmi_ctrl, u32 on);
+static void hdmi_tx_audio_off(struct hdmi_tx_ctrl *hdmi_ctrl);
 
 struct mdss_hw hdmi_tx_hw = {
 	.hw_ndx = MDSS_HW_HDMI,
@@ -137,6 +137,7 @@ struct dss_gpio hpd_gpio_config[] = {
 };
 
 struct dss_gpio ddc_gpio_config[] = {
+	{0, 1, COMPATIBLE_NAME "-ddc-mux-sel"},
 	{0, 1, COMPATIBLE_NAME "-ddc-clk"},
 	{0, 1, COMPATIBLE_NAME "-ddc-data"}
 };
@@ -2684,9 +2685,9 @@ static int hdmi_tx_power_on(struct mdss_panel_data *panel_data)
 		if (hdmi_tx_enable_power(hdmi_ctrl, HDMI_TX_DDC_PM, true))
 			DEV_ERR("%s: Failed to enable ddc power\n", __func__);
 	}
-#ifdef MHL_CEC_SUPPORT
+
 	hdmi_cec_config(hdmi_ctrl->feature_data[HDMI_TX_FEAT_CEC]);
-#endif
+
 	if (hdmi_ctrl->hpd_state) {
 		DEV_DBG("%s: Turning HDMI on\n", __func__);
 		rc = hdmi_tx_start(hdmi_ctrl);

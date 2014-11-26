@@ -22,6 +22,7 @@
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
+#include <linux/dma-buf.h>
 #include <linux/fb.h>
 #include <linux/init.h>
 #include <linux/ioport.h>
@@ -337,13 +338,10 @@ static ssize_t mdss_fb_get_type(struct device *dev,
 		break;
 	}
 
-	if (mfd->mdp.splash_init_fnc)
-		mfd->mdp.splash_init_fnc(mfd);
-
 	return ret;
 }
 
-static void mdss_fb_parse_dt_split(struct msm_fb_data_type *mfd)
+static void mdss_fb_parse_dt(struct msm_fb_data_type *mfd)
 {
 	u32 data[2];
 	int coeff = 1;
@@ -620,7 +618,8 @@ static int mdss_fb_probe(struct platform_device *pdev)
 		break;
 	}
 
-	INIT_DELAYED_WORK(&mfd->idle_notify_work, __mdss_fb_idle_notify_work);
+	if (mfd->mdp.splash_init_fnc)
+		mfd->mdp.splash_init_fnc(mfd);
 
 	INIT_DELAYED_WORK(&mfd->idle_notify_work, __mdss_fb_idle_notify_work);
 
@@ -939,8 +938,7 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	int ret = 0;
 
-	pr_info("FB_NUM:%d, MDSS_FB_%s ++ \n", mfd->panel_info->fb_num,
-			blank_mode? "BLANK": "UNBLANK");
+	pr_info("MDSS_FB_%s ++ \n", blank_mode?"BLANK":"UNBLANK");
 
 	if (!op_enable)
 		return -EPERM;
@@ -948,9 +946,6 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 	if (mfd->dcm_state == DCM_ENTER)
 		return -EPERM;
 
-	mfd->blank_mode = blank_mode;
-	mutex_lock(&mfd->power_state);
-        mutex_lock(&mfd->ctx_lock);
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
 		if (!mfd->panel_power_on && mfd->mdp.on_fnc) {
@@ -1008,14 +1003,10 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 		}
 		break;
 	}
-        mutex_unlock(&mfd->ctx_lock);
-	mutex_unlock(&mfd->power_state);
-	
-	pr_info("FB_NUM:%d, MDSS_FB_%s -- \n", mfd->panel_info->fb_num,
-			blank_mode ? "BLANK": "UNBLANK");
-
 	/* Notify listeners */
 	sysfs_notify(&mfd->fbi->dev->kobj, NULL, "show_blank_event");
+
+	pr_info("MDSS_FB_%s -- \n", blank_mode?"BLANK":"UNBLANK");
 
 	return ret;
 }
@@ -1023,66 +1014,16 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 static int mdss_fb_blank(int blank_mode, struct fb_info *info)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
-#if defined(CONFIG_MACH_S3VE3G_EUR) && defined(CONFIG_ESD_ERR_FG_RECOVERY)
-	static int nblank_mode = FB_BLANK_UNBLANK;
-	static int final_state = -1;
-	int ret;
 
-	mutex_lock(&esd_lock);
-
-	printk("%s : nblank_mode[%d], blank_mode[%d], final_state[%d], esd_active[%d]\n", __func__, nblank_mode, blank_mode, final_state, info->esd_active);
-	if(info->esd_active) {
-		if(nblank_mode == FB_BLANK_POWERDOWN) {
-//			if(final_state == FB_BLANK_UNBLANK)
-//				goto NEXT_STEP1;
-//			final_state = blank_mode;
-			if(blank_mode == FB_BLANK_UNBLANK)
-				final_state = -1;
-			mutex_unlock(&esd_lock);
-			return 0;
-		} else if(nblank_mode == FB_BLANK_UNBLANK) {
-			if(final_state == FB_BLANK_POWERDOWN && blank_mode == FB_BLANK_POWERDOWN) {
-				nblank_mode = blank_mode;
-				mutex_unlock(&esd_lock);
-				return 0;
-			}
-
-			if(blank_mode == FB_BLANK_UNBLANK)
-				final_state = -1;
-			else if(blank_mode == FB_BLANK_POWERDOWN)
-				final_state = blank_mode;
-			goto NEXT_STEP2;
-		}
-	}
-
-//NEXT_STEP1:
-
-	if(blank_mode == FB_BLANK_UNBLANK || blank_mode == FB_BLANK_POWERDOWN) {
-		nblank_mode = blank_mode;
-//		final_state = -1;
-	}
-
-NEXT_STEP2:
-#endif
 	mdss_fb_pan_idle(mfd);
 	if (mfd->op_enable == 0) {
 		if (blank_mode == FB_BLANK_UNBLANK)
 			mfd->suspend.panel_power_on = true;
 		else
 			mfd->suspend.panel_power_on = false;
-
-#if defined(CONFIG_MACH_S3VE3G_EUR) && defined(CONFIG_ESD_ERR_FG_RECOVERY)
-		mutex_unlock(&esd_lock);
-#endif
 		return 0;
 	}
-#if defined(CONFIG_MACH_S3VE3G_EUR) && defined(CONFIG_ESD_ERR_FG_RECOVERY)
-	ret = mdss_fb_blank_sub(blank_mode, info, mfd->op_enable);
-	mutex_unlock(&esd_lock);
-	return ret;
-#else
 	return mdss_fb_blank_sub(blank_mode, info, mfd->op_enable);
-#endif
 }
 
 /* Set VM page protection */
@@ -1115,7 +1056,6 @@ static inline int mdss_fb_create_ion_client(struct msm_fb_data_type *mfd)
 		mfd->fb_ion_client = NULL;
 		return PTR_RET(mfd->fb_ion_client);
 	}
-
 	return 0;
 }
 
@@ -1144,6 +1084,7 @@ void mdss_fb_free_fb_ion_memory(struct msm_fb_data_type *mfd)
 				mfd->mdp.fb_mem_get_iommu_domain(), 0);
 	}
 
+	dma_buf_put(mfd->fbmem_buf);
 	ion_free(mfd->fb_ion_client, mfd->fb_ion_handle);
 	mfd->fb_ion_handle = NULL;
 }
@@ -1187,8 +1128,10 @@ int mdss_fb_alloc_fb_ion_memory(struct msm_fb_data_type *mfd, size_t fb_size)
 	} else {
 		pr_err("No IOMMU Domain");
 		goto fb_mmap_failed;
-
 	}
+
+	mfd->fbmem_buf = ion_share_dma_buf(mfd->fb_ion_client,
+			mfd->fb_ion_handle);
 
 	vaddr  = ion_map_kernel(mfd->fb_ion_client, mfd->fb_ion_handle);
 	if (IS_ERR_OR_NULL(vaddr)) {
@@ -1262,7 +1205,7 @@ static int mdss_fb_fbmem_ion_mmap(struct fb_info *info,
 	table = ion_sg_table(mfd->fb_ion_client, mfd->fb_ion_handle);
 	if (IS_ERR(table)) {
 		pr_err("Unable to get sg_table from ion:%ld\n", PTR_ERR(table));
-	mfd->fbi->screen_base = NULL;
+		mfd->fbi->screen_base = NULL;
 		mfd->fbi->fix.smem_len = 0;
 		return PTR_ERR(table);
 	} else if (!table) {
@@ -1653,7 +1596,7 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	mfd->panel_power_on = false;
 	mfd->dcm_state = DCM_UNINIT;
 
-	mdss_fb_parse_dt_split(mfd);
+	mdss_fb_parse_dt(mfd);
 
 	if (mdss_fb_alloc_fbmem(mfd))
 		pr_warn("unable to allocate fb memory in fb register\n");
@@ -2907,15 +2850,6 @@ static int mdss_fb_register_extra_panel(struct platform_device *pdev,
 		return -EEXIST;
 	}
 
-	if (((fb_pdata->panel_info.type != MIPI_VIDEO_PANEL) ||
-		(pdata->panel_info.type != MIPI_VIDEO_PANEL)) &&
-		((fb_pdata->panel_info.type != MIPI_CMD_PANEL) ||
-		(pdata->panel_info.type != MIPI_CMD_PANEL))) {
-		pr_err("Split panel not supported for panel type %d\n",
-				pdata->panel_info.type);
-		return -EINVAL;
-	}
-
 	fb_pdata->next = pdata;
 
 	return 0;
@@ -3046,3 +2980,27 @@ int __init mdss_fb_init(void)
 }
 
 module_init(mdss_fb_init);
+
+int mdss_fb_suspres_panel(struct device *dev, void *data)
+{
+	struct msm_fb_data_type *mfd;
+	int rc;
+	u32 event;
+
+	if (!data) {
+		pr_err("Device state not defined\n");
+		return -EINVAL;
+	}
+	mfd = dev_get_drvdata(dev);
+	if (!mfd)
+		return 0;
+
+	event = *((bool *) data) ? MDSS_EVENT_RESUME : MDSS_EVENT_SUSPEND;
+
+	rc = mdss_fb_send_panel_event(mfd, event, NULL);
+	if (rc)
+		pr_warn("unable to %s fb%d (%d)\n",
+			event == MDSS_EVENT_RESUME ? "resume" : "suspend",
+			mfd->index, rc);
+	return rc;
+}

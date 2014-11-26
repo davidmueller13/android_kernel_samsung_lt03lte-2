@@ -1011,7 +1011,7 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 	    (pipe->pp_res.pp_sts.sharp_sts & PP_STS_ENABLE) ||
 	    (chroma_sample == MDSS_MDP_CHROMA_420) ||
 	    (chroma_sample == MDSS_MDP_CHROMA_H1V2) ||
-	    (pipe->scale.enable_pxl_ext && (src_h != pipe->dst.h))) {
+	        (pipe->scale.enable_pxl_ext && (src_h != pipe->dst.h))) {
 		pr_debug("scale y - src_h=%d dst_h=%d\n", src_h, pipe->dst.h);
 
 		if ((src_h / MAX_DOWNSCALE_RATIO) > pipe->dst.h) {
@@ -1031,11 +1031,11 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 			    (chroma_sample == MDSS_MDP_CHROMA_H1V2)))
 				chroma_shift = 1; /* 2x upsample chroma */
 
-			if (src_h <= pipe->dst.h) {
+			if (src_h <= pipe->dst.h)
 				scale_config |= /* G/Y, A */
 					(filter_mode << 10) |
 					(MDSS_MDP_SCALE_FILTER_BIL << 18);
-			} else
+			else
 				scale_config |= /* G/Y, A */
 					(MDSS_MDP_SCALE_FILTER_PCMN << 10) |
 					(MDSS_MDP_SCALE_FILTER_PCMN << 18);
@@ -1067,7 +1067,7 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 	    (pipe->pp_res.pp_sts.sharp_sts & PP_STS_ENABLE) ||
 	    (chroma_sample == MDSS_MDP_CHROMA_420) ||
 	    (chroma_sample == MDSS_MDP_CHROMA_H2V1) ||
-	    (pipe->scale.enable_pxl_ext && (src_w != pipe->dst.w))) {
+	        (pipe->scale.enable_pxl_ext && (src_w != pipe->dst.w))) {
 		pr_debug("scale x - src_w=%d dst_w=%d\n", src_w, pipe->dst.w);
 
 		if ((src_w / MAX_DOWNSCALE_RATIO) > pipe->dst.w) {
@@ -1088,11 +1088,11 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 			    (chroma_sample == MDSS_MDP_CHROMA_H2V1)))
 				chroma_shift = 1; /* 2x upsample chroma */
 
-			if (src_w <= pipe->dst.w) {
+			if (src_w <= pipe->dst.w)
 				scale_config |= /* G/Y, A */
 					(filter_mode << 8) |
 					(MDSS_MDP_SCALE_FILTER_BIL << 16);
-			} else
+			else
 				scale_config |= /* G/Y, A */
 					(MDSS_MDP_SCALE_FILTER_PCMN << 8) |
 					(MDSS_MDP_SCALE_FILTER_PCMN << 16);
@@ -1653,7 +1653,7 @@ int mdss_mdp_pp_setup_locked(struct mdss_mdp_ctl *ctl)
 	if (mdata->nad_cfgs == 0)
 		valid_mixers = false;
 	for (i = 0; i < mixer_cnt && valid_mixers; i++) {
-		if (mixer_id[i] >= mdata->nad_cfgs)
+		if (mixer_id[i] > mdata->nad_cfgs)
 			valid_mixers = false;
 	}
 	if (valid_mixers && (mixer_cnt <= mdata->nmax_concurrent_ad_hw)) {
@@ -3959,12 +3959,10 @@ int mdss_mdp_ad_config(struct msm_fb_data_type *mfd,
 		if (init_cfg->params.init.bl_lin_len == AD_BL_LIN_LEN) {
 			lin_ret = copy_from_user(&ad->bl_lin,
 				init_cfg->params.init.bl_lin,
-				init_cfg->params.init.bl_lin_len *
-				sizeof(uint32_t));
+				AD_BL_LIN_LEN * sizeof(uint32_t));
 			inv_ret = copy_from_user(&ad->bl_lin_inv,
 				init_cfg->params.init.bl_lin_inv,
-				init_cfg->params.init.bl_lin_len *
-				sizeof(uint32_t));
+				AD_BL_LIN_LEN * sizeof(uint32_t));
 			if (lin_ret || inv_ret)
 				ret = -ENOMEM;
 			ratio_temp =  mfd->panel_info->bl_max / AD_BL_LIN_LEN;
@@ -3973,14 +3971,13 @@ int mdss_mdp_ad_config(struct msm_fb_data_type *mfd,
 				shift++;
 			}
 			ad->bl_bright_shift = shift;
-		} else {
+		} else if (init_cfg->params.init.bl_lin_len) {
 			ret = -EINVAL;
 		}
-		if (ret) {
-			ad->state &= ~PP_AD_STATE_BL_LIN;
-			goto ad_config_exit;
-		} else
+		if (!lin_ret && !inv_ret)
 			ad->state |= PP_AD_STATE_BL_LIN;
+		else
+			ad->state &= !PP_AD_STATE_BL_LIN;
 
 		if ((init_cfg->params.init.bl_att_len == AD_BL_ATT_LUT_LEN) &&
 			(init_cfg->params.init.bl_att_lut)) {
@@ -4563,7 +4560,7 @@ static void pp_ad_calc_worker(struct work_struct *work)
 	ctl = mfd_to_ctl(ad->mfd);
 	mdata = mfd_to_mdata(ad->mfd);
 
-	if (!mdata || ad->calc_hw_num >= mdata->nad_cfgs) {
+	if (!mdata || ad->calc_hw_num > mdata->nad_cfgs) {
 		mutex_unlock(&ad->lock);
 		return;
 	}

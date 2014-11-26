@@ -65,7 +65,6 @@ int mdss_misr_set(struct mdss_data_type *mdata, struct mdp_misr *req,
 int mdss_misr_get(struct mdss_data_type *mdata, struct mdp_misr *resp,
 			struct mdss_mdp_ctl *ctl);
 void mdss_misr_crc_collect(struct mdss_data_type *mdata, int block_id);
-
 int mdss_create_xlog_debug(struct mdss_debug_data *mdd);
 void mdss_xlog(const char *name, ...);
 void mdss_xlog_dump(void);
